@@ -1,4 +1,5 @@
 package com.saha.upidisplay
+import java.text.Normalizer
 
 /** Reads the amount and payer out of a payment notification's text. */
 object PaymentParser {
@@ -25,7 +26,7 @@ object PaymentParser {
     private val PAID_YOU = Regex("""(\p{Lu}[\p{L}.]*(?:\s+\p{Lu}[\p{L}.]*){0,3})\s+(?:has\s+)?(?:paid|sent)\s+you""")
 
     fun parse(text: String): Parsed? {
-        val t = text.replace('\n', ' ').trim()
+        val t = Normalizer.normalize(text, Normalizer.Form.NFKC).replace('\n', ' ').trim()
         if (t.isEmpty()) return null
         if (!CREDIT.containsMatchIn(t)) return null
         if (NOT_CREDIT.containsMatchIn(t)) return null

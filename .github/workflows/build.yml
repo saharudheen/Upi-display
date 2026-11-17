@@ -17,18 +17,8 @@ jobs:
         with:
           gradle-version: "8.9"
       - name: Build debug APK
-        run: |
-          APP=$(find . -path '*/app/build.gradle.kts' -not -path './.git/*' | head -1)
-          if [ -z "$APP" ]; then echo "app/build.gradle.kts not found"; exit 1; fi
-          DIR=$(dirname "$(dirname "$APP")")
-          echo "Project folder: $DIR"
-          for i in 1 2 3; do
-            gradle -p "$DIR" assembleDebug --stacktrace && exit 0
-            echo "Attempt $i failed, retrying in 60s..."
-            sleep 60
-          done
-          exit 1
+        run: gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: UpiDisplay-APK
-          path: "**/app/build/outputs/apk/debug/app-debug.apk"
+          path: app/build/outputs/apk/debug/app-debug.apk

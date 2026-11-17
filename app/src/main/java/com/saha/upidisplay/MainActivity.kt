@@ -31,6 +31,12 @@ class MainActivity : Activity() {
     private var lastTopId: String? = null
     private var blink: ObjectAnimator? = null
     private val onChange: () -> Unit = { refresh() }
+    private val ticker = object : Runnable {
+        override fun run() {
+            refresh()
+            modeText.postDelayed(this, 2000)
+        }
+    }
 
     private val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
     private val match = LinearLayout.LayoutParams.MATCH_PARENT
@@ -48,10 +54,12 @@ class MainActivity : Activity() {
             receiver = DisplayLink.Receiver(this).also { it.start() }
         }
         refresh()
+        modeText.postDelayed(ticker, 2000)
     }
 
     override fun onPause() {
         super.onPause()
+        modeText.removeCallbacks(ticker)
         PaymentStore.removeListener(onChange)
         receiver?.stop()
         receiver = null
@@ -74,6 +82,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         top.addView(Ui.text(this, "UPI Payments", 22f, Ui.TEXT, bold = true), lp(0, wrap, 1f))
+        top.addView(Ui.button(this, "Scan") { scan() })
         top.addView(Ui.button(this, "Test") { testPayment() })
         top.addView(Ui.button(this, "Settings") {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -127,9 +136,13 @@ class MainActivity : Activity() {
                 .joinToString(", ")
             else -> ""
         } + if (!display) {
-            val conn = Prefs.status(this, "conn").ifBlank { "not connected yet" }
+            val live = PaymentListenerService.instance != null
+            val conn = if (live) "RUNNING (" + Prefs.status(this, "conn") + ")"
+                else "NOT RUNNING — phone stopped it (check Autostart / battery)"
+            val any = PaymentListenerService.anyCount
+            val anyLine = if (any == 0) "none since start" else "$any, last at " + Ui.time(PaymentListenerService.lastAnyTime)
             val seen = Prefs.status(this, "seen").ifBlank { "nothing yet" }
-            "\nListener: $conn\nLast payment-app notification: $seen"
+            "\nListener: $conn\nNotifications seen (any app): $anyLine\nLast payment-app notification: $seen"
         } else ""
 
         val list = PaymentStore.all(this)
@@ -173,6 +186,14 @@ class MainActivity : Activity() {
         }, lp(0, wrap, 1f))
         r.addView(Ui.text(this, if (p.verified) "✓ ${p.app}" else p.app, 12f, if (p.verified) Ui.DIM else Ui.CYAN))
         return r
+    }
+
+    private fun scan() {
+        val n = PaymentListenerService.scanNow()
+        val msg = if (n < 0) "Listener is not running, so nothing can be read. Check Autostart and notification access."
+            else "Checked $n notifications in the notification shade."
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+        refresh()
     }
 
     private fun toggle(id: String) = PaymentStore.toggleVerified(this, id)

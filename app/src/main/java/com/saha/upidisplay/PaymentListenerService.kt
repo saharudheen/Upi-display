@@ -13,11 +13,30 @@ import android.service.notification.StatusBarNotification
  */
 class PaymentListenerService : NotificationListenerService() {
 
+    companion object {
+        /** Set while Android actually has the listener running. */
+        @Volatile var instance: PaymentListenerService? = null
+        @Volatile var anyCount = 0
+        @Volatile var lastAnyTime = 0L
+
+        /** Re-checks notifications already sitting in the notification shade. */
+        fun scanNow(): Int {
+            val s = instance ?: return -1
+            val list = try { s.activeNotifications } catch (_: Exception) { null } ?: return 0
+            list.forEach { s.handle(it) }
+            return list.size
+        }
+    }
+
     override fun onListenerConnected() {
+        instance = this
+        anyCount = 0
         Prefs.setStatus(this, "conn", "Connected at " + Ui.time(System.currentTimeMillis()))
+        scanNow()
     }
 
     override fun onListenerDisconnected() {
+        instance = null
         Prefs.setStatus(this, "conn", "Disconnected at " + Ui.time(System.currentTimeMillis()) + " — reconnecting")
         // Ask Android to reconnect us (it sometimes drops listeners after an update).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -25,7 +44,18 @@ class PaymentListenerService : NotificationListenerService() {
         }
     }
 
+    override fun onDestroy() {
+        instance = null
+        super.onDestroy()
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        anyCount++
+        lastAnyTime = System.currentTimeMillis()
+        handle(sbn)
+    }
+
+    fun handle(sbn: StatusBarNotification) {
         val pkg = sbn.packageName ?: return
         if (pkg == packageName) return
         if (!Prefs.isWatched(this, pkg)) return
@@ -55,7 +85,7 @@ class PaymentListenerService : NotificationListenerService() {
             amount = parsed.amount,
             payer = parsed.payer,
             app = tag,
-            time = System.currentTimeMillis(),
+            time = sbn.postTime,
         )
         if (PaymentStore.add(this, payment) && Prefs.sendToDisplay(this)) {
             DisplayLink.send(this, payment)

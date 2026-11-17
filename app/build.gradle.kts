@@ -11,8 +11,8 @@ android {
         applicationId = "com.saha.upidisplay"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
     }
 
     // Fixed key so new builds install over the old one on both phones.

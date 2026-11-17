@@ -35,6 +35,10 @@ object Prefs {
     fun displayIp(c: Context): String = sp(c).getString("ip", "") ?: ""
     fun setDisplayIp(c: Context, v: String) = sp(c).edit().putString("ip", v.trim()).apply()
 
+    /** Small status lines shown on the main screen to make problems easy to spot. */
+    fun setStatus(c: Context, key: String, v: String) = sp(c).edit().putString("st_$key", v).apply()
+    fun status(c: Context, key: String): String = sp(c).getString("st_$key", "") ?: ""
+
     fun tagFor(c: Context, pkg: String): String {
         KNOWN[pkg]?.let { return it }
         return try {

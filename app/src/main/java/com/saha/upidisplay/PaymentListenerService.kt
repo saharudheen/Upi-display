@@ -1,6 +1,8 @@
 package com.saha.upidisplay
 
 import android.app.Notification
+import android.content.ComponentName
+import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
@@ -11,11 +13,28 @@ import android.service.notification.StatusBarNotification
  */
 class PaymentListenerService : NotificationListenerService() {
 
+    override fun onListenerConnected() {
+        Prefs.setStatus(this, "conn", "Connected at " + Ui.time(System.currentTimeMillis()))
+    }
+
+    override fun onListenerDisconnected() {
+        Prefs.setStatus(this, "conn", "Disconnected at " + Ui.time(System.currentTimeMillis()) + " — reconnecting")
+        // Ask Android to reconnect us (it sometimes drops listeners after an update).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            requestRebind(ComponentName(this, PaymentListenerService::class.java))
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val pkg = sbn.packageName ?: return
         if (pkg == packageName) return
         if (!Prefs.isWatched(this, pkg)) return
-        if (Prefs.displayMode(this)) return // a display phone only shows, it does not listen
+        val tag = Prefs.tagFor(this, pkg)
+        val now = Ui.time(System.currentTimeMillis())
+        if (Prefs.displayMode(this)) {
+            Prefs.setStatus(this, "seen", "$now $tag — ignored (display mode is on)")
+            return // a display phone only shows, it does not listen
+        }
 
         val ex = sbn.notification?.extras ?: return
         val title = ex.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
@@ -23,12 +42,13 @@ class PaymentListenerService : NotificationListenerService() {
             ?: ex.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
         val text = "$title. $body".trim()
 
-        val tag = Prefs.tagFor(this, pkg)
-        val parsed = PaymentParser.parse(text)
+        val parsed = try { PaymentParser.parse(text) } catch (e: Exception) { null }
         if (parsed == null) {
             if (text.length > 2) DebugLog.add(tag, text)
+            Prefs.setStatus(this, "seen", "$now $tag — not a payment / not understood")
             return
         }
+        Prefs.setStatus(this, "seen", "$now $tag — payment ${Ui.money(parsed.amount)}")
 
         val payment = Payment(
             id = "${sbn.key}|${sbn.postTime}|${parsed.amount}",

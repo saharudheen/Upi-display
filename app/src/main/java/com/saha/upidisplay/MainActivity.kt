@@ -126,7 +126,11 @@ class MainActivity : Activity() {
                 .ifEmpty { listOf("no payment app found — pick one in Settings") }
                 .joinToString(", ")
             else -> ""
-        }
+        } + if (!display) {
+            val conn = Prefs.status(this, "conn").ifBlank { "not connected yet" }
+            val seen = Prefs.status(this, "seen").ifBlank { "nothing yet" }
+            "\nListener: $conn\nLast payment-app notification: $seen"
+        } else ""
 
         val list = PaymentStore.all(this)
         val first = list.firstOrNull()

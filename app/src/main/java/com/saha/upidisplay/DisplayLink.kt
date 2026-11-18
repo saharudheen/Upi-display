@@ -2,6 +2,7 @@ package com.saha.upidisplay
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -19,7 +20,23 @@ object DisplayLink {
     const val PORT = 4210
 
     fun send(ctx: Context, p: Payment) {
-        val data = p.toJson().put("t", "pay").toString().toByteArray(Charsets.UTF_8)
+        broadcast(ctx, p.toJson().put("t", "pay").toString())
+    }
+
+    /**
+     * Sends the latest 10 payments in one message. Repeated every few seconds,
+     * so a display that missed a message, or was closed, catches up by itself.
+     * Message: {"t":"sync","list":[{payment}, …]}
+     */
+    fun sendList(ctx: Context) {
+        val arr = JSONArray()
+        PaymentStore.all(ctx).take(10).forEach { arr.put(it.toJson().put("v", false)) }
+        if (arr.length() == 0) return
+        broadcast(ctx, JSONObject().put("t", "sync").put("list", arr).toString(), times = 1)
+    }
+
+    private fun broadcast(ctx: Context, msg: String, times: Int = 2) {
+        val data = msg.toByteArray(Charsets.UTF_8)
         val ip = Prefs.displayIp(ctx)
         thread(name = "upi-send") {
             try {
@@ -30,7 +47,7 @@ object DisplayLink {
                         try { targets.add(InetAddress.getByName(ip)) } catch (_: Exception) {}
                     }
                     // Sent twice; the receiver ignores the copy.
-                    repeat(2) {
+                    repeat(times) {
                         targets.forEach { t -> s.send(DatagramPacket(data, data.size, t, PORT)) }
                         Thread.sleep(200)
                     }
@@ -64,14 +81,20 @@ object DisplayLink {
                     s.soTimeout = 1000
                     s.bind(InetSocketAddress(PORT))
                     socket = s
-                    val buf = ByteArray(2048)
+                    val buf = ByteArray(16384)
                     while (running) {
                         try {
                             val pk = DatagramPacket(buf, buf.size)
                             s.receive(pk)
                             val o = JSONObject(String(pk.data, 0, pk.length, Charsets.UTF_8))
-                            if (o.optString("t") == "pay") {
-                                PaymentStore.add(ctx, Payment.fromJson(o).copy(verified = false))
+                            when (o.optString("t")) {
+                                "pay" -> PaymentStore.add(ctx, Payment.fromJson(o).copy(verified = false))
+                                "sync" -> {
+                                    val list = o.optJSONArray("list") ?: JSONArray()
+                                    for (i in 0 until list.length()) {
+                                        PaymentStore.add(ctx, Payment.fromJson(list.getJSONObject(i)).copy(verified = false))
+                                    }
+                                }
                             }
                         } catch (_: SocketTimeoutException) {
                         } catch (_: Exception) {

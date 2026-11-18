@@ -20,6 +20,7 @@ object Ui {
     val GREEN = Color.parseColor("#34D399")
     val CYAN = Color.parseColor("#22D3EE")
     val RED = Color.parseColor("#B91C1C")
+    val RED_TEXT = Color.parseColor("#F87171")
 
     private val money = NumberFormat.getNumberInstance(Locale("en", "IN")).apply {
         maximumFractionDigits = 2

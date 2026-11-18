@@ -2,7 +2,12 @@ package com.saha.upidisplay
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.NotificationManager
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -13,6 +18,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
+import kotlin.random.Random
 
 class SettingsActivity : Activity() {
     private val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
@@ -53,6 +59,53 @@ class SettingsActivity : Activity() {
                 override fun afterTextChanged(s: Editable?) { Prefs.setDisplayIp(this@SettingsActivity, s?.toString() ?: "") }
             })
         }, lp(2))
+
+        // ---- Bring to front
+        section(root, "When a payment comes")
+        root.addView(switch("Bring this screen to the front (and turn the screen on)", Prefs.bringToFront(this)) {
+            Prefs.setBringToFront(this, it)
+        }, lp(4))
+        root.addView(Ui.text(
+            this,
+            "For this to work while another app is open, allow the permissions below once.",
+            13f, Ui.DIM,
+        ), lp(4))
+        root.addView(Ui.button(this, "1. Allow \"Display over other apps\"") {
+            open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }, lp(4))
+        if (Build.MANUFACTURER.equals("xiaomi", ignoreCase = true) ||
+            Build.MANUFACTURER.equals("redmi", ignoreCase = true) ||
+            Build.MANUFACTURER.equals("poco", ignoreCase = true)
+        ) {
+            root.addView(Ui.button(this, "2. Xiaomi: allow \"Display pop-up windows while running in the background\"") {
+                open(
+                    Intent("miui.intent.action.APP_PERM_EDITOR")
+                        .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                        .putExtra("extra_pkgname", packageName),
+                )
+            }, lp(4))
+        }
+        if (Build.VERSION.SDK_INT >= 34) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (!nm.canUseFullScreenIntent()) {
+                root.addView(Ui.button(this, "Allow full-screen alerts (for locked screen)") {
+                    open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName")))
+                }, lp(4))
+            }
+        }
+
+        // ---- Tools
+        section(root, "Tools")
+        root.addView(Ui.button(this, "Add a test payment") { testPayment() }, lp(4))
+        root.addView(Ui.button(this, "Scan notifications now") {
+            val n = PaymentListenerService.scanNow()
+            Toast.makeText(
+                this,
+                if (n < 0) "Listener is not running. Check Autostart and notification access."
+                else "Checked $n notifications in the notification shade.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }, lp(4))
 
         // ---- Apps
         section(root, "Payment apps to watch")
@@ -113,6 +166,30 @@ class SettingsActivity : Activity() {
             setBackgroundColor(Ui.BG)
             addView(root)
         })
+    }
+
+    private fun open(i: Intent) {
+        try {
+            startActivity(i)
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun testPayment() {
+        val names = listOf("Test Customer", "Ravi Kumar", "Priya", "Murugan S")
+        val p = Payment(
+            id = "test-" + System.currentTimeMillis(),
+            amount = (Random.nextInt(1, 100) * 10).toDouble(),
+            payer = names.random(),
+            app = "TEST",
+            time = System.currentTimeMillis(),
+        )
+        PaymentStore.add(this, p)
+        if (Prefs.sendToDisplay(this) && !Prefs.displayMode(this)) DisplayLink.send(this, p)
+        Toast.makeText(this, "Test payment ${Ui.money(p.amount)} added", Toast.LENGTH_SHORT).show()
     }
 
     private fun section(root: LinearLayout, title: String) {

@@ -3,6 +3,8 @@ package com.saha.upidisplay
 import android.app.Notification
 import android.content.ComponentName
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
@@ -28,7 +30,18 @@ class PaymentListenerService : NotificationListenerService() {
         }
     }
 
+    private val handler = Handler(Looper.getMainLooper())
+    private val syncLoop = object : Runnable {
+        override fun run() {
+            val c = this@PaymentListenerService
+            if (!Prefs.displayMode(c) && Prefs.sendToDisplay(c)) DisplayLink.sendList(c)
+            handler.postDelayed(this, 5000)
+        }
+    }
+
     override fun onListenerConnected() {
+        handler.removeCallbacks(syncLoop)
+        handler.postDelayed(syncLoop, 5000)
         instance = this
         anyCount = 0
         Prefs.setStatus(this, "conn", "Connected at " + Ui.time(System.currentTimeMillis()))
@@ -36,6 +49,7 @@ class PaymentListenerService : NotificationListenerService() {
     }
 
     override fun onListenerDisconnected() {
+        handler.removeCallbacks(syncLoop)
         instance = null
         Prefs.setStatus(this, "conn", "Disconnected at " + Ui.time(System.currentTimeMillis()) + " — reconnecting")
         // Ask Android to reconnect us (it sometimes drops listeners after an update).
@@ -45,6 +59,7 @@ class PaymentListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(syncLoop)
         instance = null
         super.onDestroy()
     }
@@ -87,8 +102,9 @@ class PaymentListenerService : NotificationListenerService() {
             app = tag,
             time = sbn.postTime,
         )
-        if (PaymentStore.add(this, payment) && Prefs.sendToDisplay(this)) {
-            DisplayLink.send(this, payment)
+        if (PaymentStore.add(this, payment)) {
+            if (Prefs.sendToDisplay(this)) DisplayLink.send(this, payment)
+            PaymentAlert.show(this, payment)
         }
     }
 }

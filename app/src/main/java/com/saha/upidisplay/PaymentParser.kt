@@ -28,7 +28,9 @@ object PaymentParser {
 
     fun parse(text: String): Parsed? {
         // PhonePe writes amounts in styled digits like 𝟭𝟬; NFKC turns them into plain 10.
-        val t = Normalizer.normalize(text, Normalizer.Form.NFKC).replace('\n', ' ').trim()
+        val t = Normalizer.normalize(text, Normalizer.Form.NFKC)
+            .replace(Regex("\\p{Cf}"), "") // invisible characters that can sit between digits
+            .replace('\n', ' ').trim()
         if (t.isEmpty()) return null
         if (!CREDIT.containsMatchIn(t)) return null
         if (NOT_CREDIT.containsMatchIn(t)) return null
